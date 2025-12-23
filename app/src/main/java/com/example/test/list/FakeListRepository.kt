@@ -1,15 +1,14 @@
 package com.example.test.list
 
 import android.util.Log
-import java.io.IOException
-import kotlin.random.Random
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import java.io.IOException
+import kotlin.random.Random
 
 // 假数据源：用延迟来模拟网络请求。
 class FakeListRepository(
