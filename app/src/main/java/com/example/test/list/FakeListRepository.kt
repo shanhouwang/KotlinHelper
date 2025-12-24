@@ -1,14 +1,13 @@
 package com.example.test.list
 
 import java.io.IOException
-import kotlin.random.Random
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.Call
@@ -32,16 +31,24 @@ class FakeListRepository(
     suspend fun fetchItems(): List<ListItem> = withContext(dispatcher) {
         val totalStart = System.currentTimeMillis()
         try {
-            coroutineScope {
+            // supervisorScope：某个子协程失败，不会取消其他兄弟协程。
+            supervisorScope {
                 // 使用 async 并发请求，模拟多个接口同时执行。
-                val bannersDeferred = async { fetchBanners() }
-                val articlesDeferred = async { fetchArticles() }
-                val usersDeferred = async { fetchUsers() }
-                val statsDeferred = async { fetchStats() }
-                val adsDeferred = async { fetchAds() }
-
-                // 随机失败，用来演示错误处理。
-                maybeFail()
+                val bannersDeferred = async {
+                    safeFetch("banners", emptyList<BannerItem>()) { fetchBanners() }
+                }
+                val articlesDeferred = async {
+                    safeFetch("articles", emptyList<ArticleItem>()) { fetchArticles() }
+                }
+                val usersDeferred = async {
+                    safeFetch("users", emptyList<UserItem>()) { fetchUsers() }
+                }
+                val statsDeferred = async {
+                    safeFetch("stats", emptyList<StatItem>()) { fetchStats() }
+                }
+                val adsDeferred = async {
+                    safeFetch("ads", emptyList<AdItem>()) { fetchAds() }
+                }
 
                 // await 也是挂起点：如果结果还没好，会挂起当前协程而不是阻塞线程。
                 // 等待所有并发任务返回结果（总耗时≈最长的那个请求）。
@@ -141,15 +148,21 @@ class FakeListRepository(
         }
     }
 
-    private fun maybeFail() {
-        // 20% 概率失败，用来看到错误态与重试逻辑。
-        if (Random.nextInt(0, 10) < 2) {
-            throw IOException("模拟网络错误")
-        }
-    }
-
     private fun log(message: String) {
         Log.d(tag, message)
+    }
+
+    // 保护性包装：单个请求失败时返回兜底数据，不影响其他请求。
+    private suspend fun <T> safeFetch(
+        name: String,
+        fallback: T,
+        block: suspend () -> T
+    ): T {
+        return runCatching { block() }
+            .getOrElse { error ->
+                log("$name 请求失败：${error.message}")
+                fallback
+            }
     }
 
     // 把 OkHttp 的回调风格改成挂起函数：等待网络结果时不会阻塞线程。
